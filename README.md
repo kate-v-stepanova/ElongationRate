@@ -29,7 +29,7 @@ Unzip: `gzip -d /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GCF_000001
 
 Rename: `mv /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GCF_000001405.39_GRCh38.p13_rna.gbff /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GRCh38.p13.rna.gbk`
 
-4. Download annotation: `wget https://ftp.ncbi.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/latest_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz`
+5. Download annotation: `wget https://ftp.ncbi.nih.gov/genomes/refseq/vertebrate_mammalian/Homo_sapiens/latest_assembly_versions/GCF_000001405.39_GRCh38.p13/GCF_000001405.39_GRCh38.p13_genomic.gff.gz`
 
 Unzip & rename: `gzip -d GCF_000001405.39_GRCh38.p13_genomic.gff.gz & mv GCF_000001405.39_GRCh38.p13_genomic.gff GRCh38.p13.gff3`
 
@@ -43,7 +43,7 @@ python /icgc/dkfzlsdf/analysis/OE0532/software/ElongationRate/discard_gnomon_ann
 
 Discard non-coding: `Rscript /icgc/dkfzlsdf/analysis/OE0532/software/ElongationRate/Discard_noncoding_annotation.r /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GRCh38.p13.Refseq.gff /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GRCh38.p13.Refseq.coding.gff`
 
-8. Convert gff to gtf
+6. Convert gff to gtf
 
 Get gffread: `git clone https://github.com/gpertea/gffread.git`
 
@@ -53,9 +53,56 @@ Build: `make release`
 
 Convert: `/icgc/dkfzlsdf/analysis/OE0532/software/gffread/gffread /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GRCh38.p13.Refseq.coding.gff -T -o /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/GRCh38.p13.Refseq.coding.gtf`
 
-10. Fetch all mRNA records: `bsub -R "rusage[mem=30G]" perl /icgc/dkfzlsdf/analysis/OE0532/software/ElongationRate/mRNA_extractor.pl /icgc/dkfzlsdf/analysis/OE0532/static/elongation/GRCm38.p6.rna.gbk`
+7. Fetch all mRNA records: `bsub -R "rusage[mem=30G]" perl /icgc/dkfzlsdf/analysis/OE0532/software/ElongationRate/mRNA_extractor.pl /icgc/dkfzlsdf/analysis/OE0532/static/elongation/GRCm38.p6.rna.gbk`
 
 This will output temp1, temp2 and temp3 files in the current directory. `temp3` will be used for the next step.
 
 Add missing sequences if 5UTR and 3UTR length <100: `bsub -q long -R "rusage[mem=100G]" python mRNA_genome_filler.py temp3 GRCh38.p13.genome_1line.fa GRCh38.p13.Refseq.coding.gff mRNA_100.fa` 
+
+8. Blastdb
+
+Download and install from here: https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/
+
+build a database with local sequences: `/usr/local/ncbi/blast/bin/makeblastdb -in mRNA_100.fa -title "mRNA_100" -dbtype nucl`
+
+blast all sequences against each other: `/usr/local/ncbi/blast/bin/blastn -task blastn -num_threads 4 -outfmt 6 -evalue 0.001 -db mRNA_100.fa -query mRNA_100.fa -out blast_result.txt`
+
+`perl BLASTNprocessor.pl blast_result.txt`
+
+9. Mapping ribosomal footprints to unique ORFs
+
+Build reference: `bsub -q long -R "rusage[mem=30G]" /icgc/dkfzlsdf/analysis/OE0532/software/bowtie-1.2.3-linux-x86_64/bowtie-build /icgc/dkfzlsdf/analysis/OE0532/static/elongation/mRNA_100.fasta /icgc/dkfzlsdf/analysis/OE0532/static/elongation/mRNA_100uniq`
+
+Create uniq.bwt for all samples: `for f in $(ls /icgc/dkfzlsdf/analysis/OE0532/3808/analysis/output/demultiplexed/*.fastq); do fn=$(basename $f); fn=${fn%.fastq}; echo "bsub -R \"rusage[mem=30G]\" -q long /icgc/dkfzlsdf/analysis/OE0532/software/bowtie-1.2.3-linux-x86_64/bowtie -p 20 -v 2 -m 1 --norc --max /icgc/dkfzlsdf/analysis/OE0532/3808/analysis/output/elongation/genomic/$fn.fastq /icgc/dkfzlsdf/analysis/OE0532/static/elongation/hg38/mRNA_100uniq $f \> /icgc/dkfzlsdf/analysis/OE0532/3808/analysis/output/elongation/bowtie/$fn.coverage.bwt"; done`
+
+
+10. Coverage
+
+Coverage files:
+`for f in $(ls bowtie/*.bwt); do fn=$(basename $f); fn=${fn%.bwt}; echo "perl Coverage.pl hg38/mRNA_100.fa $f coverage/${fn}.txt"; done`
+
+Final coverage files (to plot): `for f in $(ls coverage/*.txt); do fn=$(basename $f); fn=${fn%.coverage.txt}; echo "perl Coverage_processor.pl 2000 start $f" results/$fn; done`
+
+11. Plot results
+Create a table: `vim /icgc/dkfzlsdf/analysis/OE0532/3808/analysis/input/metadata/elongation_table.txt`
+
+The table looks like that:
+
+```
+sample  group
+S1_Ctrl_0min    Ctrl
+S2_Ctrl_2.5min  Ctrl
+S3_Ctrl_5min    Ctrl
+S4_Ctrl_10min   Ctrl
+S5_STLC_0min    STLC
+S6_STLC_2.5min  STLC
+S7_STLC_5min    STLC
+S8_STLC_10min   STLC
+```
+
+Plot results: `python plot_results.py 3808`
+
+Single plot: `python single_plot.py 3808`
+
+
 
