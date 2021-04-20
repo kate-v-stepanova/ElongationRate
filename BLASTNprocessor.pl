@@ -31,7 +31,7 @@ close(FILE); close(OUT1); close(OUT2);
 #write down the fna file with unique non-redundant gene sequences
 my $counter = 0;
 my %refrence;
-open (REF, "<mRNA_100.fasta");
+open (REF, "<mRNA_100.fa");
 while ($name = <REF>) {
     chomp($name);
     $name = substr($name, 1);

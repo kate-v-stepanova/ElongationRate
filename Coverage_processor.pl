@@ -23,7 +23,7 @@ while ($line = <FILE>){
 close(FILE);close(OUT);
 
 # calculate sum coverage for individual genes (row sum) and normalized average across each nucleotide for all genes (column average)
-open (FILE, "<".$ARGV[3]."temp1"); open (OUT1, ">".$ARGV[3]."temp2"); open (OUT2, ">".$ARGV[3]."density_plot");
+open (FILE, "<".$ARGV[3]."temp1"); open (OUT1, ">".$ARGV[3]."temp2"); open (OUT2, ">".$ARGV[3]."_density_plot.txt");
 my @column_norm_full; my @column_norm_end;
 my $counter = 0;
 while ($line = <FILE>)
